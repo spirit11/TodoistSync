@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+
 static class RootOptions
 {
     public static readonly Option<string> ApiKey = new(
@@ -27,7 +28,8 @@ static class RootOptions
 
     public static readonly Option<string> Source = new(
         "--source",
-        "Specify the data source (todoist|database)");
+        () => "merge",
+        "Specify the data source (merge|todoist|database)");
 
     public static readonly Option<bool> NoSync = new(
         "--no-sync",
