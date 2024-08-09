@@ -59,7 +59,7 @@ jobs:
         release_name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false
-		
+
     - name: Install zip
       run: sudo apt-get install zip
 
