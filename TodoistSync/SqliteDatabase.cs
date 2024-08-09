@@ -18,8 +18,6 @@ public class SqliteDatabase
     {
         DoWithConnection(connection =>
         {
-            connection.Open();
-
             // Create the CompletedItems table if it doesn't exist
             const string createTableQuery = @"
                 CREATE TABLE IF NOT EXISTS CompletedItems (

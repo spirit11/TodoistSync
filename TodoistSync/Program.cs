@@ -34,15 +34,17 @@ rootCommand.SetHandler(async context =>
     var apiKey = parseResult.GetValueForOption(RootOptions.ApiKey)
                  ?? Configuration["TodoistSettings:ApiKey"]
                  ?? Environment.GetEnvironmentVariable("TODOIST_API_KEY");
+    if (apiKey == "!PUT_YOUR_API_KEY_HERE!") apiKey = null;
 
     // Determine Database Path
     var dbPath = parseResult.GetValueForOption(RootOptions.DbPath)
                  ?? Configuration["TodoistSettings:DatabasePath"]
                  ?? Environment.GetEnvironmentVariable("TODOIST_DB");
+    if (dbPath == "!PUT_YOUR_DATABASE_PATH_HERE!") dbPath = null;
 
     if (string.IsNullOrEmpty(apiKey) && string.IsNullOrEmpty(dbPath))
     {
-        Console.WriteLine("Either API key or database path must be provided.");
+        Console.WriteLine("Either API key or database path must be provided. Run TodoistSync -h for help.");
         return;
     }
 
@@ -64,28 +66,22 @@ rootCommand.SetHandler(async context =>
 
     IEnumerable<CompletedItem> itemsToPrint = Array.Empty<CompletedItem>();
 
+    var itemQueryOptions = filterOptions.ToItemsQuery();
     if (useApi)
     {
         if (!noSync)
         {
-            var sqliteDatabase = new SqliteDatabase(dbPath);
-            var lastDbItem = sqliteDatabase.GetLastCompletedItem();
+            SyncDatabaseWithApi(apiKey, dbPath, itemQueryOptions);
         }
 
         Console.WriteLine("Fetching tasks from Todoist API...");
-        var completedTasks = await FetchTasksFromApi(apiKey, filterOptions.ToItemsQuery());
+        var completedTasks = await FetchTasksFromApi(apiKey, itemQueryOptions);
         itemsToPrint = completedTasks.Items;
-
-        if (!noSync)
-        {
-            Console.WriteLine("Synchronizing with database...");
-            SyncDatabaseWithApi(apiKey, dbPath, completedTasks);
-        }
     }
     else
     {
         Console.WriteLine("Fetching tasks from database...");
-        itemsToPrint = FetchTasksFromDatabase(dbPath, filterOptions.ToItemsQuery());
+        itemsToPrint = FetchTasksFromDatabase(dbPath, itemQueryOptions);
     }
 
     foreach (var element in itemsToPrint
@@ -120,8 +116,36 @@ IEnumerable<CompletedItem> FetchTasksFromDatabase(string dbPath, ItemQueryOption
     return new SqliteDatabase(dbPath).GetCompletedItemsByCompletedAtRange(itemQueryOptions.From, DateTime.Now);
 }
 
-void SyncDatabaseWithApi(string apiKey, string dbPath, CompletedItemsInfo completedTasks)
+async Task SyncDatabaseWithApi(string apiKey, string dbPath, ItemQueryOptions itemQueryOptions)
 {
+    Console.WriteLine("Synchronizing with database...");
+    var sqliteDatabase = new SqliteDatabase(dbPath);
+    var lastDbItem = sqliteDatabase.GetLastCompletedItem();
+    ITodoistClient client = new TodoistClient(apiKey);
+    CompletedItemsInfo completed;
+    if (lastDbItem is null)
+    {
+        completed = await client.Items.GetCompletedAsync(
+            new ItemFilter
+            {
+                Limit = itemQueryOptions.Limit,
+                Since = itemQueryOptions.From
+            }
+        );
+    }
+    else
+    {
+        completed = await client.Items.GetCompletedAsync(
+            new ItemFilter
+            {
+                Limit = 200,
+                Since = lastDbItem.CompletedAt.ToUniversalTime()
+            }
+        );
+    }
+
+    Console.WriteLine($"New {completed.Items.Count} todo items fetched");
+    sqliteDatabase.SaveCompletedItem(completed.Items);
 }
 
 public class FilterOptions
@@ -136,7 +160,7 @@ public class FilterOptions
         return new ItemQueryOptions
         {
             From = FromDate is null ? DateTime.Now.AddDays(-Math.Clamp(Days, 0, 100)) : DateTime.Parse(FromDate),
-            Limit = Limit,
+            Limit = Math.Clamp(Limit, 1, 1000),
             LastTaskInfo = string.IsNullOrEmpty(VaultPath) ? null : GetLastCompleted()
         };
     }
