@@ -64,7 +64,7 @@ jobs:
       run: sudo apt-get install zip
 
     - name: Zip published files
-      run: zip -r ${{ github.workspace }}/published-files.zip ${{ github.workspace }}/published-files/*
+      run: zip -r ${{ github.workspace }}/published-files.zip ${{ github.workspace }}/publish/*
 
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
